@@ -1,0 +1,88 @@
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #6ecaf4;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  touch-action: manipulation;
+}
+
+.game-shell {
+  width: 100vw;
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, #88dcff 0%, #bcefff 54%, #fff0b4 100%);
+}
+
+.game-frame {
+  position: relative;
+  width: min(100vw, calc(100dvh * 390 / 844));
+  height: min(100dvh, calc(100vw * 844 / 390));
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius: 0;
+  box-shadow: 0 20px 50px rgba(41, 86, 119, 0.28);
+  background: transparent;
+}
+
+.rank-form {
+  position: absolute;
+  left: 50%;
+  top: 82%;
+  width: min(76%, 296px);
+  transform: translate(-50%, -50%);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 28px rgba(41, 86, 119, 0.24);
+}
+
+.rank-form[hidden] {
+  display: none;
+}
+
+.rank-form label {
+  grid-column: 1 / -1;
+  color: #31475d;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.rank-form input,
+.rank-form button {
+  min-width: 0;
+  height: 42px;
+  border: 2px solid #93d7f2;
+  border-radius: 8px;
+  font: 800 16px system-ui, sans-serif;
+}
+
+.rank-form input {
+  padding: 0 10px;
+  color: #31475d;
+}
+
+.rank-form button {
+  padding: 0 16px;
+  color: #31475d;
+  background: #ffd76c;
+}

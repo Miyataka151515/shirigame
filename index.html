@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>しりちゃんのふわふわ大冒険</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <div class="game-frame">
+        <canvas id="game" width="390" height="844" aria-label="2D auto-scrolling sky action game"></canvas>
+        <form id="rankForm" class="rank-form" hidden>
+          <label for="rankName">RANK IN!</label>
+          <input id="rankName" name="rankName" maxlength="10" autocomplete="off" placeholder="NAME" />
+          <button type="submit">OK</button>
+        </form>
+      </div>
+    </main>
+    <script src="src/game.js"></script>
+  </body>
+</html>
