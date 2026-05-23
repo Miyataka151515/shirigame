@@ -55,6 +55,10 @@ canvas {
   box-shadow: 0 12px 28px rgba(41, 86, 119, 0.24);
 }
 
+.rank-form.title-rank-form {
+  top: 78%;
+}
+
 .rank-form[hidden] {
   display: none;
 }
@@ -79,6 +83,10 @@ canvas {
 .rank-form input {
   padding: 0 10px;
   color: #31475d;
+}
+
+.rank-form input:invalid {
+  border-color: #ff9aae;
 }
 
 .rank-form button {
