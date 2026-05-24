@@ -19,6 +19,7 @@ const RANK_LIMIT = 5;
 const RANK_FETCH_LIMIT = 100;
 const RUNNER_TITLE_VISIBLE_RANK_ROWS = 8;
 const RUNNER_OVER_VISIBLE_RANK_ROWS = 8;
+const DUEL_TITLE_VISIBLE_RANK_ROWS = 7;
 const DUEL_ENEMIES = ["octopus", "dashCat", "duelStage3", "duelBeaver", "duelGhost", "duelMouse", "duelRedOctopus"];
 const DUEL_MAX_STAGE = DUEL_ENEMIES.length;
 const helpButton = { x: 138, y: 616, w: 114, h: 36 };
@@ -374,6 +375,7 @@ async function addRanking(name, value) {
 function showRankForm(value, onTitle = false) {
   rankForm.querySelector("label").textContent = isRankIn(value) ? `RANK IN! ${value}` : `SCORE ${value}`;
   rankForm.hidden = false;
+  rankSkip.hidden = false;
   rankForm.dataset.purpose = "runnerRank";
   rankForm.dataset.score = String(value);
   rankForm.classList.toggle("title-rank-form", onTitle);
@@ -386,6 +388,7 @@ function hideRankForm() {
   rankForm.dataset.purpose = "";
   rankForm.dataset.score = "";
   rankForm.classList.remove("title-rank-form");
+  rankSkip.hidden = false;
   rankName.setCustomValidity("");
   canvas.focus();
 }
@@ -1227,6 +1230,7 @@ function showDuelNameForm() {
   rankName.setCustomValidity("");
   rankForm.dataset.purpose = "duelName";
   rankForm.hidden = false;
+  rankSkip.hidden = true;
   window.setTimeout(() => rankName.focus(), 0);
 }
 
@@ -1912,18 +1916,18 @@ function drawHudDuel() {
 function drawDuelTitle() {
   ctx.save();
   ctx.fillStyle = "rgba(255,255,255,0.84)";
-  roundRect(42, 142, W - 84, 470, 8);
+  roundRect(42, 120, W - 84, 462, 8);
   ctx.fill();
   ctx.fillStyle = "#31475d";
   ctx.textAlign = "center";
   ctx.font = "900 28px system-ui, sans-serif";
-  ctx.fillText("しり殺", W / 2, 194);
-  drawTitleShiri(214, 0.72);
+  ctx.fillText("しり殺", W / 2, 172);
+  drawTitleShiri(192, 0.68);
   ctx.font = "800 15px system-ui, sans-serif";
-  ctx.fillText("名前を入れて決闘開始", W / 2, 340);
-  drawDuelRanking(W / 2, 386);
+  ctx.fillText("名前を入れて決闘開始", W / 2, 318);
+  drawDuelRanking(W / 2, 358);
   if (state.titleRankIn) {
-    drawTitleRankInLabel(W / 2, 570);
+    drawTitleRankInLabel(W / 2, 548);
   }
   drawHelpButton(duelTitleHelpButton, "操作説明");
   drawSmallSwitchButton(duelTitleSwitchButton, "ふわふわ");
@@ -2498,7 +2502,7 @@ function scrollTitleRanking(kind, delta) {
     return true;
   }
   if (kind === "duel") {
-    state.duelRankScroll = Math.max(0, Math.min(rankMaxScroll(duelRankings), state.duelRankScroll + delta));
+    state.duelRankScroll = Math.max(0, Math.min(rankMaxScroll(duelRankings, DUEL_TITLE_VISIBLE_RANK_ROWS), state.duelRankScroll + delta));
     return true;
   }
   return false;
@@ -2508,7 +2512,7 @@ function rankAreaKind(x, y) {
   if ((state?.mode === "runnerTitle" || state?.mode === "over") && x >= 48 && x <= W - 48 && y >= H * 0.25 + 138 && y <= H * 0.25 + 318) {
     return "runner";
   }
-  if (state?.appMode === "duel" && !state.duel && x >= 48 && x <= W - 48 && y >= 400 && y <= 526) {
+  if (state?.appMode === "duel" && !state.duel && x >= 48 && x <= W - 48 && y >= 372 && y <= 544) {
     return "duel";
   }
   return "";
@@ -2574,7 +2578,7 @@ function drawDuelRanking(cx, y) {
     const stage = rank?.stage ? ` ST${rank.stage}` : "";
     const bestTime = Number.isFinite(rank?.bestTime) ? ` ${rank.bestTime.toFixed(3)}秒` : "";
     return rank ? `${index + 1}. ${rank.name} ${rank.score}${stage}${bestTime}` : `${index + 1}. ---`;
-  });
+  }, DUEL_TITLE_VISIBLE_RANK_ROWS);
   ctx.restore();
 }
 
