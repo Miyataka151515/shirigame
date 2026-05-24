@@ -2,6 +2,7 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const rankForm = document.getElementById("rankForm");
 const rankName = document.getElementById("rankName");
+const rankSkip = document.getElementById("rankSkip");
 
 const W = canvas.width;
 const H = canvas.height;
@@ -16,6 +17,8 @@ const DUEL_SCORES_ENDPOINT = `${SUPABASE_URL}/rest/v1/duel_scores`;
 const DASH_CAT_UNLOCK_DISTANCE = 75;
 const RANK_LIMIT = 5;
 const RANK_FETCH_LIMIT = 100;
+const RUNNER_TITLE_VISIBLE_RANK_ROWS = 8;
+const RUNNER_OVER_VISIBLE_RANK_ROWS = 8;
 const DUEL_ENEMIES = ["octopus", "dashCat", "duelStage3", "duelBeaver", "duelGhost", "duelMouse", "duelRedOctopus"];
 const DUEL_MAX_STAGE = DUEL_ENEMIES.length;
 const helpButton = { x: 138, y: 616, w: 114, h: 36 };
@@ -50,6 +53,18 @@ const assetList = {
   duelBeaver: "assets/duel-beaver.png",
 };
 
+const voiceClipList = {
+  damageIte: "assets/audio/voice-damage-ite.mp4",
+  damageUwa: "assets/audio/voice-damage-uwa.mp4",
+  damageMoo: "assets/audio/voice-damage-moo.mp4",
+  scoreBad: "assets/audio/voice-score-bad.mp4",
+  scoreWorse: "assets/audio/voice-score-worse.mp4",
+  scoreOkay: "assets/audio/voice-score-okay.mp4",
+  scoreGood: "assets/audio/voice-score-good.mp4",
+  scoreGreat: "assets/audio/voice-score-great.mp4",
+  scoreMarriage: "assets/audio/voice-score-marriage.mp4",
+};
+
 const itemKinds = {
   beer: { size: 46, score: 0 },
   yakitori: { size: 44, score: 0 },
@@ -68,6 +83,16 @@ let duelRankings = loadLocalDuelRankings();
 let duelPlayerName = localStorage.getItem("shiriDuelPlayerName") || "";
 let helpDrag = null;
 let rankDrag = null;
+const audioState = {
+  ctx: null,
+  enabled: false,
+  clips: {},
+  clipsReady: false,
+  clipsUnlocked: false,
+  nextNoteAt: 0,
+  noteIndex: 0,
+  mode: "",
+};
 refreshRankings();
 refreshDuelRankings();
 
@@ -129,6 +154,7 @@ function resetGame(options = {}) {
     particles: [],
     scorePops: [],
     sparkles: [],
+    lastEnemyY: H * 0.5,
     rankPrompted: false,
     pendingRankScore: options.pendingRankScore || 0,
     titleRankIn: Boolean(options.titleRankIn),
@@ -160,10 +186,10 @@ function tap() {
     resetGame({
       mode: "runnerTitle",
       appMode: "runner",
-      pendingRankScore: shouldRank ? finalScore : 0,
+      pendingRankScore: finalScore,
       titleRankIn: shouldRank,
     });
-    if (shouldRank) {
+    if (finalScore >= 0) {
       window.setTimeout(() => showRankForm(finalScore, true), 120);
     }
     return;
@@ -177,6 +203,7 @@ function tap() {
   if (state.mode !== "play") return;
   state.player.vy = -365;
   addParticles(state.player.x + 18, state.player.y + state.player.h - 8, "#ffffff", 8);
+  playJumpSound();
 }
 
 function loadLocalRankings() {
@@ -345,7 +372,7 @@ async function addRanking(name, value) {
 }
 
 function showRankForm(value, onTitle = false) {
-  rankForm.querySelector("label").textContent = "RANK IN!";
+  rankForm.querySelector("label").textContent = isRankIn(value) ? `RANK IN! ${value}` : `SCORE ${value}`;
   rankForm.hidden = false;
   rankForm.dataset.purpose = "runnerRank";
   rankForm.dataset.score = String(value);
@@ -363,6 +390,12 @@ function hideRankForm() {
   canvas.focus();
 }
 
+function skipRankForm() {
+  hideRankForm();
+  state.titleRankIn = false;
+  state.pendingRankScore = 0;
+}
+
 function spawnEnemy() {
   const roll = Math.random();
   const type = roll < 0.18 ? "runnerExploder" : roll < 0.48 ? "octopus" : "squirrel";
@@ -370,13 +403,14 @@ function spawnEnemy() {
   const size = type === "octopus"
     ? 54 + Math.random() * 18
     : type === "runnerExploder"
-      ? 94 + Math.random() * 20
+      ? 70 + Math.random() * 14
       : 58 + Math.random() * 20 + difficulty * 18;
   const aspect = type === "runnerExploder" ? 1.65 : 1;
+  const y = chooseEnemyY(size);
   state.enemies.push({
     type,
-    x: W + 50,
-    y: 88 + Math.random() * (H - 196),
+    x: W + 82,
+    y,
     w: size * aspect,
     h: size,
     drift: Math.random() * Math.PI * 2,
@@ -385,6 +419,30 @@ function spawnEnemy() {
     wildness: 1 + difficulty * 1.6,
   });
   state.enemies[state.enemies.length - 1].baseY = state.enemies[state.enemies.length - 1].y;
+  state.lastEnemyY = y;
+}
+
+function chooseEnemyY(size) {
+  const top = 96;
+  const bottom = H - 126 - size;
+  const existing = state.enemies.filter((enemy) => enemy.x > W - 60);
+  let bestY = top + Math.random() * Math.max(1, bottom - top);
+  let bestScore = -Infinity;
+  for (let i = 0; i < 10; i++) {
+    const candidate = top + Math.random() * Math.max(1, bottom - top);
+    const nearestGap = existing.reduce((minGap, enemy) => {
+      const gap = Math.abs((enemy.y + enemy.h * 0.5) - (candidate + size * 0.5));
+      return Math.min(minGap, gap);
+    }, 999);
+    const lastGap = Math.abs((state.lastEnemyY || H * 0.5) - candidate);
+    const playerGap = Math.abs((state.player.y + state.player.h * 0.5) - (candidate + size * 0.5));
+    const score = nearestGap * 1.4 + lastGap * 0.7 + playerGap * 0.25;
+    if (score > bestScore) {
+      bestScore = score;
+      bestY = candidate;
+    }
+  }
+  return bestY;
 }
 
 function spawnItem() {
@@ -419,6 +477,7 @@ function spawnItem() {
 
 function update(dt) {
   state.modeTime += dt;
+  updateMusic();
   if (state.appMode === "duel") {
     updateClouds(dt);
     updateDuel(dt);
@@ -494,7 +553,7 @@ function updateSpawns(dt) {
 
   if (state.spawnEnemy <= 0) {
     spawnEnemy();
-    state.spawnEnemy = Math.max(0.72, 1.42 - state.time * 0.012) + Math.random() * 0.55;
+    state.spawnEnemy = Math.max(0.94, 1.55 - state.time * 0.01) + Math.random() * 0.68;
   }
 
   if (state.spawnItem <= 0) {
@@ -523,14 +582,14 @@ function startSparkleTime() {
 function spawnDashCatWarning() {
   const count = dashCatCount();
   const lanes = [
-    state.player.y + state.player.h * 0.5,
     H * 0.22,
     H * 0.5,
     H * 0.78,
+    state.player.y + state.player.h * 0.5,
   ].map((y) => Math.max(108, Math.min(H - 118, y)));
   const uniqueLanes = [];
   for (const y of lanes) {
-    if (!uniqueLanes.some((other) => Math.abs(other - y) < 108)) uniqueLanes.push(y);
+    if (!uniqueLanes.some((other) => Math.abs(other - y) < 142)) uniqueLanes.push(y);
   }
 
   state.dashCats = uniqueLanes.slice(0, count).map((y, index) => ({
@@ -547,6 +606,7 @@ function spawnDashCatWarning() {
 function updateEnemies(dt) {
   const pBox = playerHitbox();
   for (const enemy of state.enemies) {
+    const previousX = enemy.x;
     if (enemy.type === "octopus") {
       enemy.x -= (state.speed * 0.86 + Math.sin(state.time * 5.4 + enemy.phase) * 58 * enemy.wildness) * dt;
       enemy.baseY += Math.sin(state.time * 2.2 + enemy.drift) * 20 * enemy.wildness * dt;
@@ -563,6 +623,9 @@ function updateEnemies(dt) {
       enemy.y += Math.sign(targetY - enemy.y) * Math.min(Math.abs(targetY - enemy.y), chase * dt);
       enemy.y += Math.sin(state.time * 2.5 + enemy.drift) * 18 * dt;
     }
+    if (previousX > W && enemy.x <= W) {
+      enforceEntryGap(enemy);
+    }
     if (intersects(pBox, enemy)) {
       if (state.invincible > 0) {
         enemy.dead = true;
@@ -578,6 +641,20 @@ function updateEnemies(dt) {
     }
   }
   state.enemies = state.enemies.filter((enemy) => !enemy.dead && enemy.x > -100);
+}
+
+function enforceEntryGap(enemy) {
+  for (const other of state.enemies) {
+    if (other === enemy || other.dead) continue;
+    const xGap = Math.abs((other.x + other.w * 0.5) - (enemy.x + enemy.w * 0.5));
+    const yGap = Math.abs((other.y + other.h * 0.5) - (enemy.y + enemy.h * 0.5));
+    if (xGap < 170 && yGap < 118) {
+      enemy.y += enemy.y < H * 0.5 ? -126 : 126;
+      enemy.y = Math.max(92, Math.min(H - enemy.h - 94, enemy.y));
+      enemy.baseY = enemy.y;
+      break;
+    }
+  }
 }
 
 function updateDashCat(dt) {
@@ -634,15 +711,18 @@ function collectItem(kind, x, y) {
     state.invincible = 5;
     addTextPop(x, y, "無敵!", "#f4a62a");
     addParticles(x, y, "#ffe28a", 18);
+    playPowerSound();
   } else if (kind === "yakitori") {
     state.yakitoriCount += 1;
     if (state.yakitoriCount % 3 === 0) heal(1);
     addTextPop(x, y, state.yakitoriCount % 3 === 0 ? "回復!" : `${state.yakitoriCount % 3}/3`, "#d97832");
     addParticles(x, y, "#f4a04e", 10);
+    playItemSound();
   } else if (kind === "pudding") {
     heal(1);
     addTextPop(x, y, "回復!", "#d8a22c");
     addParticles(x, y, "#fff0a4", 12);
+    playPowerSound();
   } else if (kind === "bomb") {
     const defeated = state.enemies.length;
     state.enemies = [];
@@ -654,20 +734,24 @@ function collectItem(kind, x, y) {
     state.shake = 10;
     addTextPop(x, y, "爆破!", "#ff6048");
     addParticles(W * 0.5, H * 0.48, "#ff6b4a", 36);
+    playExplosionSound();
   } else if (kind === "peach") {
     state.peachCount += 1;
     addScorePop(x, y, 100, "#ff668a");
     addParticles(x, y, "#ffb1b8", 12);
+    playItemSound();
   } else if (kind === "goldenPeach") {
     state.goldenPeachCount += 1;
     addScorePop(x, y, 1000, "#f4a62a");
     addTextPop(x, y - 24, "激レア!", "#ffcf33");
     addParticles(x, y, "#ffd85a", 24);
+    playPowerSound();
   } else if (kind === "microphone") {
     state.microphoneCount += 1;
     addScorePop(x, y, 250, "#7b68ff");
     addParticles(x, y, "#d9d7ee", 14);
     addParticles(x, y, "#ffd05c", 8);
+    playItemSound();
   }
 }
 
@@ -680,8 +764,9 @@ function takeDamage() {
   state.lives -= 1;
   state.damageCooldown = 1.1;
   state.shake = 7;
-  addDamageVoice();
+  addDamageVoiceWithAudio();
   addParticles(state.player.x + 32, state.player.y + 34, "#ff6580", 18);
+  playDamageSound();
   if (state.lives <= 0) {
     setGameOver();
   }
@@ -696,6 +781,7 @@ function explodeRunnerEnemy(enemy) {
   addParticles(enemy.x + enemy.w * 0.5, enemy.y + enemy.h * 0.5, "#ff6b4a", 34);
   addParticles(enemy.x + enemy.w * 0.5, enemy.y + enemy.h * 0.5, "#3e3e3e", 20);
   addSmokeParticles(state.player.x + state.player.w * 0.5, state.player.y + 28, 18);
+  playExplosionSound();
   takeDamage();
 }
 
@@ -703,6 +789,17 @@ function addDamageVoice() {
   const voices = ["いて", "うわ", "もお！"];
   const text = voices[Math.floor(Math.random() * voices.length)];
   addTextPop(state.player.x + state.player.w * 0.7, state.player.y + 8, text, "#ff5b7a");
+}
+
+function addDamageVoiceWithAudio() {
+  const voices = [
+    { text: "\u3044\u3066", clip: "damageIte" },
+    { text: "\u3046\u308f", clip: "damageUwa" },
+    { text: "\u3082\u304a\uff01", clip: "damageMoo" },
+  ];
+  const voice = voices[Math.floor(Math.random() * voices.length)];
+  addTextPop(state.player.x + state.player.w * 0.7, state.player.y + 8, voice.text, "#ff5b7a");
+  playVoiceClip(voice.clip);
 }
 
 function instantDeath() {
@@ -718,7 +815,9 @@ function setGameOver() {
   if (state.mode === "over") return;
   state.mode = "over";
   state.modeTime = 0;
+  playLoseSound();
   const finalScore = score();
+  window.setTimeout(() => playVoiceClip(scoreVoiceClipForScore(finalScore)), 260);
   if (!state.rankPrompted && isRankIn(finalScore)) {
     state.rankPrompted = true;
   }
@@ -833,6 +932,230 @@ function addEnemyScore(x, y, count = 1) {
   addScorePop(x, y, points, "#ff9b45");
 }
 
+function ensureAudio() {
+  initVoiceClips();
+  if (audioState.ctx) {
+    if (audioState.ctx.state === "suspended") audioState.ctx.resume();
+    audioState.enabled = true;
+    unlockVoiceClips();
+    return audioState.ctx;
+  }
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return null;
+  audioState.ctx = new AudioCtor();
+  audioState.enabled = true;
+  audioState.nextNoteAt = audioState.ctx.currentTime + 0.08;
+  unlockVoiceClips();
+  return audioState.ctx;
+}
+
+function initVoiceClips() {
+  if (audioState.clipsReady) return;
+  audioState.clipsReady = true;
+  Object.entries(voiceClipList).forEach(([key, src]) => {
+    const clip = document.createElement("video");
+    clip.src = src;
+    clip.preload = "auto";
+    clip.playsInline = true;
+    clip.setAttribute("playsinline", "");
+    clip.setAttribute("webkit-playsinline", "");
+    clip.volume = 0.92;
+    clip.style.position = "fixed";
+    clip.style.left = "-9999px";
+    clip.style.top = "0";
+    clip.style.width = "1px";
+    clip.style.height = "1px";
+    clip.style.opacity = "0";
+    document.body.appendChild(clip);
+    clip.load();
+    audioState.clips[key] = clip;
+  });
+}
+
+function unlockVoiceClips() {
+  if (audioState.clipsUnlocked) return;
+  audioState.clipsUnlocked = true;
+  Object.values(audioState.clips).forEach((clip) => {
+    const previousMuted = clip.muted;
+    clip.muted = true;
+    const promise = clip.play();
+    if (promise?.then) {
+      promise
+        .then(() => {
+          clip.pause();
+          clip.currentTime = 0;
+          clip.muted = previousMuted;
+        })
+        .catch(() => {
+          clip.muted = previousMuted;
+        });
+    } else {
+      clip.pause();
+      clip.currentTime = 0;
+      clip.muted = previousMuted;
+    }
+  });
+}
+
+function playVoiceClip(key) {
+  if (!audioState.enabled) return;
+  initVoiceClips();
+  const clip = audioState.clips[key];
+  if (!clip) return;
+  const player = clip.cloneNode(true);
+  player.volume = clip.volume;
+  player.playsInline = true;
+  player.setAttribute("playsinline", "");
+  player.setAttribute("webkit-playsinline", "");
+  player.style.position = "fixed";
+  player.style.left = "-9999px";
+  player.style.top = "0";
+  player.style.width = "1px";
+  player.style.height = "1px";
+  player.style.opacity = "0";
+  player.currentTime = 0;
+  document.body.appendChild(player);
+  const cleanup = () => player.remove();
+  player.addEventListener("ended", cleanup, { once: true });
+  player.addEventListener("error", cleanup, { once: true });
+  const promise = player.play();
+  if (promise?.catch) promise.catch(cleanup);
+}
+
+function playTone(freq, start, duration, type = "sine", volume = 0.05, endFreq = null) {
+  const ctxAudio = ensureAudio();
+  if (!ctxAudio) return;
+  const osc = ctxAudio.createOscillator();
+  const gain = ctxAudio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  if (endFreq) osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), start + duration);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  osc.connect(gain);
+  gain.connect(ctxAudio.destination);
+  osc.start(start);
+  osc.stop(start + duration + 0.02);
+}
+
+function playNoise(start, duration, volume = 0.08, tone = 900) {
+  const ctxAudio = ensureAudio();
+  if (!ctxAudio) return;
+  const sampleRate = ctxAudio.sampleRate;
+  const buffer = ctxAudio.createBuffer(1, Math.max(1, Math.floor(sampleRate * duration)), sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const source = ctxAudio.createBufferSource();
+  const filter = ctxAudio.createBiquadFilter();
+  const gain = ctxAudio.createGain();
+  source.buffer = buffer;
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(tone, start);
+  gain.gain.setValueAtTime(volume, start);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctxAudio.destination);
+  source.start(start);
+  source.stop(start + duration);
+}
+
+function updateMusic() {
+  if (!audioState.enabled || !audioState.ctx) return;
+  const ctxAudio = audioState.ctx;
+  const mode = state?.appMode === "duel" ? "duel" : "runner";
+  if (audioState.mode !== mode) {
+    audioState.mode = mode;
+    audioState.noteIndex = 0;
+    audioState.nextNoteAt = ctxAudio.currentTime + 0.08;
+  }
+  const runnerNotes = [1046.5, 1174.66, 1318.51, 1567.98, 1760, 1567.98, 1318.51, 1174.66];
+  const duelNotes = [220, 261.63, 293.66, 329.63, 392, 329.63, 293.66, 261.63];
+  const notes = mode === "duel" ? duelNotes : runnerNotes;
+  const step = mode === "duel" ? 0.34 : 0.54;
+  while (audioState.nextNoteAt < ctxAudio.currentTime + 0.18) {
+    const note = notes[audioState.noteIndex % notes.length];
+    if (mode === "runner") {
+      playTone(note, audioState.nextNoteAt, step * 0.32, "sine", 0.018);
+      playTone(note * 1.5, audioState.nextNoteAt + 0.015, step * 0.2, "triangle", 0.004);
+      if (audioState.noteIndex % 8 === 0) {
+        playTone(523.25, audioState.nextNoteAt, step * 1.4, "sine", 0.004);
+      }
+    } else {
+      playTone(note, audioState.nextNoteAt, step * 0.62, "triangle", 0.026);
+      if (audioState.noteIndex % 2 === 0) {
+        playTone(note / 2, audioState.nextNoteAt, step * 0.9, "triangle", 0.014);
+      }
+    }
+    audioState.noteIndex += 1;
+    audioState.nextNoteAt += step;
+  }
+}
+
+function audioNow() {
+  const ctxAudio = ensureAudio();
+  return ctxAudio ? ctxAudio.currentTime : 0;
+}
+
+function playJumpSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(360, t, 0.12, "sine", 0.055, 720);
+}
+
+function playItemSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(660, t, 0.08, "sine", 0.045);
+  playTone(990, t + 0.055, 0.1, "sine", 0.04);
+}
+
+function playPowerSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(523, t, 0.12, "triangle", 0.05);
+  playTone(784, t + 0.08, 0.13, "triangle", 0.05);
+  playTone(1046, t + 0.16, 0.16, "triangle", 0.045);
+}
+
+function playDamageSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(260, t, 0.18, "sawtooth", 0.045, 120);
+}
+
+function playExplosionSound() {
+  const t = audioNow();
+  if (!t) return;
+  playNoise(t, 0.42, 0.12, 520);
+  playTone(110, t, 0.32, "sawtooth", 0.05, 55);
+}
+
+function playCueSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(880, t, 0.08, "square", 0.045);
+  playTone(1320, t + 0.08, 0.08, "square", 0.04);
+}
+
+function playFakeCueSound() {
+  playCueSound();
+}
+
+function playWinSound() {
+  const t = audioNow();
+  if (!t) return;
+  [523, 659, 784, 1046].forEach((freq, i) => playTone(freq, t + i * 0.07, 0.16, "triangle", 0.05));
+}
+
+function playLoseSound() {
+  const t = audioNow();
+  if (!t) return;
+  playTone(330, t, 0.18, "triangle", 0.05, 220);
+  playTone(220, t + 0.15, 0.28, "triangle", 0.045, 110);
+}
+
 function playerHitbox() {
   const p = state.player;
   return {
@@ -872,6 +1195,15 @@ function shiriCommentForScore(value) {
   if (value <= 10000) return "\u3084\u308b\u3058\u3083\u3093\uff01";
   if (value <= 15000) return "\u3059\u3001\u3001\u3059\u3063\u3054\uff5e\u3044\uff01";
   return "\u7d50\u5a5a\u3057\u307e\u3057\u3087\u3046";
+}
+
+function scoreVoiceClipForScore(value) {
+  if (value <= 3000) return "scoreBad";
+  if (value <= 5000) return "scoreWorse";
+  if (value <= 7000) return "scoreOkay";
+  if (value <= 10000) return "scoreGood";
+  if (value <= 15000) return "scoreGreat";
+  return "scoreMarriage";
 }
 
 function dashCatCount() {
@@ -1004,6 +1336,7 @@ function updateDuel(dt) {
       duel.message = fakes[Math.floor(Math.random() * fakes.length)];
       duel.cueColor = randomDuelTextColor();
       setRandomDuelMessagePosition();
+      playFakeCueSound();
       duel.fakeTimer = 0.35 + Math.random() * 0.65;
       duel.nextFake = 0.35 + Math.random() * 1.8;
     }
@@ -1013,6 +1346,7 @@ function updateDuel(dt) {
       duel.message = "今だ!!";
       duel.cueColor = randomDuelTextColor();
       setRandomDuelMessagePosition();
+      playCueSound();
     }
     return;
   }
@@ -1089,6 +1423,7 @@ function winDuel() {
   duel.message = isDuelClearStage(duel.stage) ? "完全制覇!" : "しり殺!";
   duel.detail = `${reaction.toFixed(3)}秒  +${1000 + bonus}`;
   duel.slash = 1;
+  playWinSound();
 }
 
 function loseDuel(message) {
@@ -1098,6 +1433,7 @@ function loseDuel(message) {
   duel.message = message;
   duel.detail = `SCORE ${duel.score}`;
   duel.slash = 1;
+  playLoseSound();
 }
 
 function draw() {
@@ -1843,17 +2179,17 @@ function drawOverlay() {
   }
 
   ctx.fillStyle = "rgba(255,255,255,0.82)";
-  roundRect(42, H * 0.25, W - 84, 318, 8);
+  roundRect(42, H * 0.25, W - 84, 382, 8);
   ctx.fill();
   ctx.fillStyle = "#31475d";
   ctx.textAlign = "center";
   drawOverlayTitle(state.mode === "over" ? "GAME OVER" : "しりちゃんのふわふわ大冒険", W / 2, H * 0.25 + 48);
   ctx.font = "700 17px system-ui, sans-serif";
   drawGameOverScore(W / 2, H * 0.25 + 83);
-  drawRanking(W / 2, H * 0.25 + 136);
+  drawRanking(W / 2, H * 0.25 + 136, RUNNER_OVER_VISIBLE_RANK_ROWS);
   ctx.textAlign = "left";
 
-  drawShiriComment(W / 2, H * 0.25 + 360, shiriCommentForScore(score()));
+  drawShiriComment(W / 2, H * 0.25 + 430, shiriCommentForScore(score()));
 
   if (state.showHelp) {
     drawHelpPanel();
@@ -1863,7 +2199,7 @@ function drawOverlay() {
 function drawRunnerTitleOverlay() {
   ctx.save();
   ctx.fillStyle = "rgba(255,255,255,0.82)";
-  roundRect(42, H * 0.25, W - 84, 286, 8);
+  roundRect(42, H * 0.25, W - 84, 340, 8);
   ctx.fill();
   ctx.fillStyle = "#31475d";
   ctx.textAlign = "center";
@@ -1874,11 +2210,11 @@ function drawRunnerTitleOverlay() {
   ctx.globalAlpha = 1;
   drawRanking(W / 2, H * 0.25 + 124);
   if (state.titleRankIn) {
-    drawTitleRankInLabel(W / 2, H * 0.25 + 270);
+    drawTitleRankInLabel(W / 2, 650);
   }
   drawHelpButton(runnerTitleHelpButton, "\u64cd\u4f5c\u8aac\u660e");
   drawSmallSwitchButton(runnerTitleSwitchButton, "\u3057\u308a\u6bba\u3078");
-  drawTitleShiri(H * 0.25 + 286, 0.82);
+  drawTitleShiri(H * 0.25 + 354, 0.82);
   ctx.restore();
 
   if (state.showHelp) {
@@ -2150,14 +2486,15 @@ function scrollHelp(delta) {
   return true;
 }
 
-function rankMaxScroll(list) {
-  return Math.max(0, Math.max(RANK_LIMIT, list.length) * 22 - RANK_LIMIT * 22);
+function rankMaxScroll(list, visibleRows = RANK_LIMIT) {
+  return Math.max(0, Math.max(visibleRows, list.length) * 22 - visibleRows * 22);
 }
 
 function scrollTitleRanking(kind, delta) {
   if (!state) return false;
   if (kind === "runner") {
-    state.runnerRankScroll = Math.max(0, Math.min(rankMaxScroll(rankings), state.runnerRankScroll + delta));
+    const visibleRows = state.mode === "over" ? RUNNER_OVER_VISIBLE_RANK_ROWS : RUNNER_TITLE_VISIBLE_RANK_ROWS;
+    state.runnerRankScroll = Math.max(0, Math.min(rankMaxScroll(rankings, visibleRows), state.runnerRankScroll + delta));
     return true;
   }
   if (kind === "duel") {
@@ -2168,7 +2505,7 @@ function scrollTitleRanking(kind, delta) {
 }
 
 function rankAreaKind(x, y) {
-  if (state?.mode === "runnerTitle" && x >= 48 && x <= W - 48 && y >= H * 0.25 + 138 && y <= H * 0.25 + 264) {
+  if ((state?.mode === "runnerTitle" || state?.mode === "over") && x >= 48 && x <= W - 48 && y >= H * 0.25 + 138 && y <= H * 0.25 + 318) {
     return "runner";
   }
   if (state?.appMode === "duel" && !state.duel && x >= 48 && x <= W - 48 && y >= 400 && y <= 526) {
@@ -2213,7 +2550,7 @@ function drawShiriComment(cx, y, text) {
   ctx.restore();
 }
 
-function drawRanking(cx, y) {
+function drawRanking(cx, y, visibleRows = RUNNER_TITLE_VISIBLE_RANK_ROWS) {
   ctx.save();
   ctx.textAlign = "center";
   ctx.fillStyle = "#31475d";
@@ -2222,7 +2559,7 @@ function drawRanking(cx, y) {
   ctx.font = "700 14px system-ui, sans-serif";
   drawScrollableRankRows(rankings, cx, y, state.runnerRankScroll, (rank, index) => {
     return rank ? `${index + 1}. ${rank.name}  ${rank.score}` : `${index + 1}. ---`;
-  });
+  }, visibleRows);
   ctx.restore();
 }
 
@@ -2241,12 +2578,11 @@ function drawDuelRanking(cx, y) {
   ctx.restore();
 }
 
-function drawScrollableRankRows(list, cx, y, scroll, formatLine) {
+function drawScrollableRankRows(list, cx, y, scroll, formatLine, visibleRows = RANK_LIMIT) {
   const rowH = 22;
-  const visibleRows = RANK_LIMIT;
   const rowTop = y + 14;
   const clipH = visibleRows * rowH + 8;
-  const count = Math.max(RANK_LIMIT, list.length);
+  const count = Math.max(visibleRows, list.length);
   const start = Math.max(0, Math.floor(scroll / rowH));
   const offset = scroll % rowH;
 
@@ -2261,7 +2597,7 @@ function drawScrollableRankRows(list, cx, y, scroll, formatLine) {
   }
   ctx.restore();
 
-  const maxScroll = rankMaxScroll(list);
+  const maxScroll = rankMaxScroll(list, visibleRows);
   if (maxScroll > 0) {
     const trackX = W - 56;
     const trackY = rowTop + 8;
@@ -2302,6 +2638,7 @@ function loop(time) {
 
 canvas.addEventListener("pointerdown", (event) => {
   event.preventDefault();
+  ensureAudio();
   const point = canvasPoint(event);
   if (handleOverlayClick(point.x, point.y)) return;
   tap();
@@ -2418,7 +2755,10 @@ function pointInRect(x, y, rect) {
 
 window.addEventListener("keydown", (event) => {
   if (!rankForm.hidden) return;
-  if (event.code === "Space" || event.code === "ArrowUp") tap();
+  if (event.code === "Space" || event.code === "ArrowUp") {
+    ensureAudio();
+    tap();
+  }
 });
 
 rankForm.addEventListener("submit", async (event) => {
@@ -2444,6 +2784,10 @@ rankForm.addEventListener("submit", async (event) => {
   await addRanking(rankName.value, finalScore);
   submitButton.disabled = false;
   hideRankForm();
+});
+
+rankSkip.addEventListener("click", () => {
+  skipRankForm();
 });
 
 loadAssets().then(() => {
