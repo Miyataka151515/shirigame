@@ -1001,26 +1001,7 @@ function initVoiceClips() {
 function unlockVoiceClips() {
   if (audioState.clipsUnlocked) return;
   audioState.clipsUnlocked = true;
-  Object.values(audioState.clips).forEach((clip) => {
-    const previousMuted = clip.muted;
-    clip.muted = true;
-    const promise = clip.play();
-    if (promise?.then) {
-      promise
-        .then(() => {
-          clip.pause();
-          clip.currentTime = 0;
-          clip.muted = previousMuted;
-        })
-        .catch(() => {
-          clip.muted = previousMuted;
-        });
-    } else {
-      clip.pause();
-      clip.currentTime = 0;
-      clip.muted = previousMuted;
-    }
-  });
+  Object.values(audioState.clips).forEach((clip) => clip.load());
 }
 
 function playVoiceClip(key) {
