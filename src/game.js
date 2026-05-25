@@ -20,7 +20,7 @@ const RANK_FETCH_LIMIT = 100;
 const RUNNER_TITLE_VISIBLE_RANK_ROWS = 8;
 const RUNNER_OVER_VISIBLE_RANK_ROWS = 8;
 const DUEL_TITLE_VISIBLE_RANK_ROWS = 7;
-const DUEL_ENEMIES = ["octopus", "dashCat", "duelStage3", "duelBeaver", "duelGhost", "duelMouse", "duelRedOctopus"];
+const DUEL_ENEMIES = ["octopus", "dashCat", "duelStage3", "duelBeaver", "duelGhost", "duelMouse", "duelRedOctopus", "duelShieru", "duelReaper"];
 const DUEL_MAX_STAGE = DUEL_ENEMIES.length;
 const helpButton = { x: 138, y: 616, w: 114, h: 36 };
 const helpCloseButton = { x: 128, y: 772, w: 134, h: 38 };
@@ -52,6 +52,8 @@ const assetList = {
   duelMouse: "assets/duel-mouse.png",
   duelRedOctopus: "assets/duel-red-octopus.png",
   duelBeaver: "assets/duel-beaver.png",
+  duelShieru: "assets/duel-shieru.png",
+  duelReaper: "assets/duel-reaper.png",
 };
 
 const voiceClipList = {
@@ -64,6 +66,17 @@ const voiceClipList = {
   scoreGood: "assets/audio/voice-score-good.mp4",
   scoreGreat: "assets/audio/voice-score-great.mp4",
   scoreMarriage: "assets/audio/voice-score-marriage.mp4",
+  itemBeer: "assets/audio/voice-item-beer.mp4",
+  itemYakitori: "assets/audio/voice-item-yakitori.mp4",
+  itemPudding: "assets/audio/voice-item-pudding.mp4",
+  itemBomb: "assets/audio/voice-item-bomb.mp4",
+  itemPeach: "assets/audio/voice-item-peach.mp4",
+  itemRare: "assets/audio/voice-item-rare.mp4",
+  itemMic: "assets/audio/voice-item-mic.mp4",
+  invincibleKill: "assets/audio/voice-invincible-kill.mp4",
+  deathScream: "assets/audio/voice-death-scream.mp4",
+  duelKill: "assets/audio/voice-duel-kill.mp4",
+  duelStage3Laugh: "assets/audio/voice-duel-stage3-laugh.mp4",
 };
 
 const itemKinds = {
@@ -634,6 +647,7 @@ function updateEnemies(dt) {
         enemy.dead = true;
         addEnemyScore(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2);
         addParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#ffd76c", 14);
+        playVoiceClip("invincibleKill");
       } else {
         if (enemy.type === "runnerExploder") {
           explodeRunnerEnemy(enemy);
@@ -684,6 +698,7 @@ function updateDashCat(dt) {
         addEnemyScore(cat.x + cat.w / 2, cat.y, 2);
         addParticles(cat.x + cat.w / 2, cat.y, "#ffd76c", 24);
         cat.dead = true;
+        playVoiceClip("invincibleKill");
         continue;
       }
       takeDamage();
@@ -715,17 +730,20 @@ function collectItem(kind, x, y) {
     addTextPop(x, y, "無敵!", "#f4a62a");
     addParticles(x, y, "#ffe28a", 18);
     playPowerSound();
+    playVoiceClip("itemBeer");
   } else if (kind === "yakitori") {
     state.yakitoriCount += 1;
     if (state.yakitoriCount % 3 === 0) heal(1);
     addTextPop(x, y, state.yakitoriCount % 3 === 0 ? "回復!" : `${state.yakitoriCount % 3}/3`, "#d97832");
     addParticles(x, y, "#f4a04e", 10);
     playItemSound();
+    playVoiceClip("itemYakitori");
   } else if (kind === "pudding") {
     heal(1);
     addTextPop(x, y, "回復!", "#d8a22c");
     addParticles(x, y, "#fff0a4", 12);
     playPowerSound();
+    playVoiceClip("itemPudding");
   } else if (kind === "bomb") {
     const defeated = state.enemies.length;
     state.enemies = [];
@@ -738,23 +756,27 @@ function collectItem(kind, x, y) {
     addTextPop(x, y, "爆破!", "#ff6048");
     addParticles(W * 0.5, H * 0.48, "#ff6b4a", 36);
     playExplosionSound();
+    playVoiceClip("itemBomb");
   } else if (kind === "peach") {
     state.peachCount += 1;
     addScorePop(x, y, 100, "#ff668a");
     addParticles(x, y, "#ffb1b8", 12);
     playItemSound();
+    playVoiceClip("itemPeach");
   } else if (kind === "goldenPeach") {
     state.goldenPeachCount += 1;
     addScorePop(x, y, 1000, "#f4a62a");
     addTextPop(x, y - 24, "激レア!", "#ffcf33");
     addParticles(x, y, "#ffd85a", 24);
     playPowerSound();
+    playVoiceClip("itemRare");
   } else if (kind === "microphone") {
     state.microphoneCount += 1;
     addScorePop(x, y, 250, "#7b68ff");
     addParticles(x, y, "#d9d7ee", 14);
     addParticles(x, y, "#ffd05c", 8);
     playItemSound();
+    playVoiceClip("itemMic");
   }
 }
 
@@ -819,8 +841,9 @@ function setGameOver() {
   state.mode = "over";
   state.modeTime = 0;
   playLoseSound();
+  playVoiceClip("deathScream");
   const finalScore = score();
-  window.setTimeout(() => playVoiceClip(scoreVoiceClipForScore(finalScore)), 260);
+  window.setTimeout(() => playVoiceClip(scoreVoiceClipForScore(finalScore)), 1200);
   if (!state.rankPrompted && isRankIn(finalScore)) {
     state.rankPrompted = true;
   }
@@ -1256,7 +1279,7 @@ function createDuelState() {
     cueColor: "#31475d",
     messageX: W / 2,
     messageY: 174,
-    enemy: "squirrel",
+    enemy: DUEL_ENEMIES[0],
     resultSaved: false,
     rankIn: false,
     savingResult: false,
@@ -1267,15 +1290,14 @@ function createDuelState() {
 
 function setupDuelStage() {
   const duel = state.duel;
-  duel.stage = Math.min(duel.stage, DUEL_MAX_STAGE);
-  duel.enemy = DUEL_ENEMIES[duel.stage - 1];
+  duel.enemy = DUEL_ENEMIES[(duel.stage - 1) % DUEL_MAX_STAGE];
   duel.phase = "intro";
   duel.phaseTime = 0;
   duel.message = `STAGE ${duel.stage}`;
   duel.detail = "";
-  duel.cueWindow = Math.max(0.1, 0.62 * Math.pow(0.88, duel.stage - 1));
+  duel.cueWindow = Math.max(0.25, 0.62 * Math.pow(0.88, duel.stage - 1));
   duel.fakeTimer = 0;
-  duel.nextFake = 0.45 + Math.random() * 1.7;
+  duel.nextFake = randomNextFakeDelay(duel.stage);
   duel.cueDelay = randomCueDelay(duel.stage);
   duel.cueColor = randomDuelTextColor();
   setRandomDuelMessagePosition();
@@ -1284,14 +1306,44 @@ function setupDuelStage() {
 
 function randomCueDelay(stage) {
   const roll = Math.random();
-  const baseMax = Math.max(1.0, 4.2 - stage * 0.08);
-  if (roll < 0.18) return 0.65 + Math.random() * 0.55;
-  if (roll < 0.72) return 1.4 + Math.random() * baseMax;
-  return 4.4 + Math.random() * 2.4;
+  const pressure = Math.min(stage, 18);
+  const baseMax = Math.max(1.2, 5.2 - pressure * 0.08);
+  if (roll < 0.16) return 0.45 + Math.random() * 0.7;
+  if (roll < 0.46) return 1.2 + Math.random() * baseMax;
+  if (roll < 0.82) return 3.6 + Math.random() * 4.8;
+  return 8.2 + Math.random() * 4.8;
+}
+
+function randomNextFakeDelay(stage) {
+  const roll = Math.random();
+  if (roll < 0.24) return 0.18 + Math.random() * 0.45;
+  if (roll < 0.62) return 0.7 + Math.random() * 1.8;
+  return 2.4 + Math.random() * (2.8 + Math.min(stage, 12) * 0.08);
+}
+
+function randomFakeDisplayDuration() {
+  return Math.random() < 0.18 ? 0.75 + Math.random() * 0.5 : 0.28 + Math.random() * 0.5;
+}
+
+function randomFakeCueMessage() {
+  const fakes = [
+    "\u4eca\u3058\u3083\u306a\u3044!!!",
+    "\u307e\u3060!!",
+    "\u5f85\u3066!!",
+    "\u3044\u307e...\u3058\u3083\u306a\u3044!",
+    "\u4eca\u304b\u3082?",
+    "\u4eca...?",
+    "\u4eca\u304b!?",
+    "\u4eca\u306a\u306e!?",
+    "\u3044\u307e\u3058\u3083\u306a\u3044?",
+    "\u3044\u307e\u3060\u306b\u65e9\u3044!",
+    "\u30bf\u30c3\u30d7!?\u3057\u306a\u3044!",
+  ];
+  return fakes[Math.floor(Math.random() * fakes.length)];
 }
 
 function isDuelClearStage(stage) {
-  return stage >= DUEL_MAX_STAGE;
+  return false;
 }
 
 function randomDuelTextColor() {
@@ -1335,14 +1387,16 @@ function updateDuel(dt) {
       duel.message = "";
       duel.cueColor = "#31475d";
     }
-    if (duel.nextFake <= 0 && duel.cueDelay > 0.75) {
-      const fakes = ["今じゃない!!!", "まだ!!", "待て!!", "いま...じゃない!", "今かも?", "今...?", "今だ!?", "いまだに早い!"];
-      duel.message = fakes[Math.floor(Math.random() * fakes.length)];
+    if (duel.nextFake <= 0 && duel.cueDelay > 0.35) {
+      duel.message = randomFakeCueMessage();
       duel.cueColor = randomDuelTextColor();
       setRandomDuelMessagePosition();
       playFakeCueSound();
-      duel.fakeTimer = 0.35 + Math.random() * 0.65;
-      duel.nextFake = 0.35 + Math.random() * 1.8;
+      duel.fakeTimer = randomFakeDisplayDuration();
+      if (Math.random() < 0.44 && duel.cueDelay < 6.5) {
+        duel.cueDelay += 0.65 + Math.random() * 3.6;
+      }
+      duel.nextFake = randomNextFakeDelay(duel.stage);
     }
     if (duel.cueDelay <= 0) {
       duel.phase = "cue";
@@ -1428,6 +1482,7 @@ function winDuel() {
   duel.detail = `${reaction.toFixed(3)}秒  +${1000 + bonus}`;
   duel.slash = 1;
   playWinSound();
+  playVoiceClip("duelKill");
 }
 
 function loseDuel(message) {
@@ -1438,20 +1493,22 @@ function loseDuel(message) {
   duel.detail = `SCORE ${duel.score}`;
   duel.slash = 1;
   playLoseSound();
+  if (duel.enemy === "duelStage3") playVoiceClip("duelStage3Laugh");
 }
 
 function draw() {
+  syncPageTheme();
   ctx.save();
   if (state.shake > 0 && (state.mode === "play" || state.modeTime < 1)) {
     ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
   }
 
-  drawBackground();
   if (state.appMode === "duel") {
     drawDuel();
     ctx.restore();
     return;
   }
+  drawBackground();
   drawSparkles();
   drawItems();
   drawEnemies();
@@ -1462,6 +1519,10 @@ function draw() {
   drawHud();
   drawOverlay();
   ctx.restore();
+}
+
+function syncPageTheme() {
+  document.body.classList.toggle("duel-mode", state?.appMode === "duel");
 }
 
 function drawDuel() {
@@ -1547,6 +1608,8 @@ function duelEnemySize(key) {
     duelMouse: [92, 90],
     duelRedOctopus: [58, 106],
     duelBeaver: [84, 92],
+    duelShieru: [88, 122],
+    duelReaper: [106, 136],
   };
   const [w, h] = sizes[key] || [84, 74];
   return { w, h };
@@ -1792,6 +1855,12 @@ function drawDuelStageBackdrop(stage) {
   const theme = (stage - 1) % 4;
   const floorY = H * 0.62;
   ctx.save();
+  const base = ctx.createLinearGradient(0, 0, 0, H);
+  base.addColorStop(0, "#182039");
+  base.addColorStop(0.46, "#51314a");
+  base.addColorStop(1, "#17121f");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, W, H);
 
   if (assets.duelBackgrounds) {
     const img = assets.duelBackgrounds;

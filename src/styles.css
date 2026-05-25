@@ -14,6 +14,10 @@ body {
   touch-action: manipulation;
 }
 
+body.duel-mode {
+  background: #24192a;
+}
+
 .game-shell {
   width: 100vw;
   height: 100dvh;
@@ -21,6 +25,12 @@ body {
   place-items: center;
   background:
     linear-gradient(180deg, #88dcff 0%, #bcefff 54%, #fff0b4 100%);
+}
+
+body.duel-mode .game-shell {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 190, 116, 0.34), transparent 32%),
+    linear-gradient(180deg, #3f2535 0%, #7a3a45 28%, #2c2230 68%, #15111b 100%);
 }
 
 .game-frame {
@@ -38,6 +48,10 @@ canvas {
   border-radius: 0;
   box-shadow: 0 20px 50px rgba(41, 86, 119, 0.28);
   background: transparent;
+}
+
+body.duel-mode canvas {
+  box-shadow: 0 20px 54px rgba(22, 12, 20, 0.5);
 }
 
 .rank-form {
@@ -93,4 +107,12 @@ canvas {
   padding: 0 16px;
   color: #31475d;
   background: #ffd76c;
+}
+
+.rank-form .rank-skip {
+  grid-column: 1 / -1;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(147, 215, 242, 0.82);
+  font-size: 14px;
 }
