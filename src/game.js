@@ -22,6 +22,9 @@ const RUNNER_OVER_VISIBLE_RANK_ROWS = 8;
 const DUEL_TITLE_VISIBLE_RANK_ROWS = 7;
 const DUEL_ENEMIES = ["octopus", "dashCat", "duelStage3", "duelBeaver", "duelGhost", "duelMouse", "duelRedOctopus", "duelShieru", "duelReaper"];
 const DUEL_MAX_STAGE = DUEL_ENEMIES.length;
+const COMBO_WINDOW = 2.6;
+const MAX_COMBO_MULTIPLIER = 5;
+const MAGNET_RADIUS = 560;
 const helpButton = { x: 138, y: 616, w: 114, h: 36 };
 const helpCloseButton = { x: 128, y: 772, w: 134, h: 38 };
 const duelHelpCloseButton = { x: 128, y: 562, w: 134, h: 38 };
@@ -57,26 +60,26 @@ const assetList = {
 };
 
 const voiceClipList = {
-  damageIte: "assets/audio/voice-damage-ite.mp4",
-  damageUwa: "assets/audio/voice-damage-uwa.mp4",
-  damageMoo: "assets/audio/voice-damage-moo.mp4",
-  scoreBad: "assets/audio/voice-score-bad.mp4",
-  scoreWorse: "assets/audio/voice-score-worse.mp4",
-  scoreOkay: "assets/audio/voice-score-okay.mp4",
-  scoreGood: "assets/audio/voice-score-good.mp4",
-  scoreGreat: "assets/audio/voice-score-great.mp4",
-  scoreMarriage: "assets/audio/voice-score-marriage.mp4",
-  itemBeer: "assets/audio/voice-item-beer.mp4",
-  itemYakitori: "assets/audio/voice-item-yakitori.mp4",
-  itemPudding: "assets/audio/voice-item-pudding.mp4",
-  itemBomb: "assets/audio/voice-item-bomb.mp4",
-  itemPeach: "assets/audio/voice-item-peach.mp4",
-  itemRare: "assets/audio/voice-item-rare.mp4",
-  itemMic: "assets/audio/voice-item-mic.mp4",
-  invincibleKill: "assets/audio/voice-invincible-kill.mp4",
-  deathScream: "assets/audio/voice-death-scream.mp4",
-  duelKill: "assets/audio/voice-duel-kill.mp4",
-  duelStage3Laugh: "assets/audio/voice-duel-stage3-laugh.mp4",
+  damageIte: "assets/audio/voice-damage-ite.m4a",
+  damageUwa: "assets/audio/voice-damage-uwa.m4a",
+  damageMoo: "assets/audio/voice-damage-moo.m4a",
+  scoreBad: "assets/audio/voice-score-bad.m4a",
+  scoreWorse: "assets/audio/voice-score-worse.m4a",
+  scoreOkay: "assets/audio/voice-score-okay.m4a",
+  scoreGood: "assets/audio/voice-score-good.m4a",
+  scoreGreat: "assets/audio/voice-score-great.m4a",
+  scoreMarriage: "assets/audio/voice-score-marriage.m4a",
+  itemBeer: "assets/audio/voice-item-beer.m4a",
+  itemYakitori: "assets/audio/voice-item-yakitori.m4a",
+  itemPudding: "assets/audio/voice-item-pudding.m4a",
+  itemBomb: "assets/audio/voice-item-bomb.m4a",
+  itemPeach: "assets/audio/voice-item-peach.m4a",
+  itemRare: "assets/audio/voice-item-rare.m4a",
+  itemMic: "assets/audio/voice-item-mic.m4a",
+  invincibleKill: "assets/audio/voice-invincible-kill.m4a",
+  deathScream: "assets/audio/voice-death-scream.m4a",
+  duelKill: "assets/audio/voice-duel-kill.m4a",
+  duelStage3Laugh: "assets/audio/voice-duel-stage3-laugh.m4a",
 };
 
 const itemKinds = {
@@ -141,6 +144,9 @@ function resetGame(options = {}) {
     peachCount: 0,
     goldenPeachCount: 0,
     microphoneCount: 0,
+    combo: 0,
+    comboTimer: 0,
+    comboBonus: 0,
     yakitoriCount: 0,
     lives: 3,
     maxLives: 5,
@@ -151,6 +157,10 @@ function resetGame(options = {}) {
     dashCatCooldown: 7,
     sparkleTimer: 0,
     sparkleCooldown: 12,
+    magnetTimer: 0,
+    goldenBoostTimer: 0,
+    windSpawn: 7,
+    luckyCloudSpawn: 10,
     sootTimer: 0,
     speed: 185,
     shake: 0,
@@ -165,6 +175,8 @@ function resetGame(options = {}) {
     enemies: [],
     dashCats: [],
     items: [],
+    windZones: [],
+    luckyClouds: [],
     particles: [],
     scorePops: [],
     sparkles: [],
@@ -465,14 +477,14 @@ function spawnItem() {
   const roll = Math.random();
   let kind = "peach";
   if (state.sparkleTimer > 0) {
-    if (roll < 0.16) kind = "goldenPeach";
+    if (roll < (state.goldenBoostTimer > 0 ? 0.32 : 0.16)) kind = "goldenPeach";
     else if (roll < 0.48) kind = "peach";
     else if (roll < 0.74) kind = "microphone";
     else if (roll < 0.84) kind = "beer";
     else if (roll < 0.92) kind = "pudding";
     else kind = "yakitori";
   } else {
-    if (roll < 0.04) kind = "goldenPeach";
+    if (roll < (state.goldenBoostTimer > 0 ? 0.18 : 0.04)) kind = "goldenPeach";
     else if (roll < 0.14) kind = "beer";
     else if (roll < 0.30) kind = "yakitori";
     else if (roll < 0.44) kind = "pudding";
@@ -487,6 +499,32 @@ function spawnItem() {
     y: 96 + Math.random() * (H - 210),
     w: item.size,
     h: item.size,
+    bob: Math.random() * Math.PI * 2,
+  });
+}
+
+function spawnWindZone() {
+  const upward = Math.random() < 0.58;
+  const width = 132 + Math.random() * 44;
+  state.windZones.push({
+    x: W + 40,
+    y: 78,
+    w: width,
+    h: H - 182,
+    force: upward ? -1350 : 1120,
+    upward,
+    life: 1,
+    phase: Math.random() * Math.PI * 2,
+  });
+  addTextPop(W * 0.5, H * 0.24, upward ? "上昇気流!" : "下降気流!", upward ? "#45b7ff" : "#9b7cff");
+}
+
+function spawnLuckyCloud() {
+  state.luckyClouds.push({
+    x: W + 70,
+    y: 118 + Math.random() * (H - 280),
+    w: 74,
+    h: 48,
     bob: Math.random() * Math.PI * 2,
   });
 }
@@ -511,6 +549,12 @@ function update(dt) {
   state.invincible = Math.max(0, state.invincible - dt);
   state.damageCooldown = Math.max(0, state.damageCooldown - dt);
   state.sparkleTimer = Math.max(0, state.sparkleTimer - dt);
+  state.magnetTimer = Math.max(0, state.magnetTimer - dt);
+  state.goldenBoostTimer = Math.max(0, state.goldenBoostTimer - dt);
+  if (state.comboTimer > 0) {
+    state.comboTimer = Math.max(0, state.comboTimer - dt);
+    if (state.comboTimer <= 0) state.combo = 0;
+  }
   state.sootTimer = Math.max(0, state.sootTimer - dt);
   if (state.sootTimer > 0 && Math.random() < dt * 18) {
     addSmokeParticles(state.player.x + state.player.w * 0.5, state.player.y + 18, 1);
@@ -521,9 +565,11 @@ function update(dt) {
   updateClouds(dt);
   updatePlayer(dt);
   updateSpawns(dt);
+  updateWindZones(dt);
   updateEnemies(dt);
   updateDashCat(dt);
   updateItems(dt);
+  updateLuckyClouds(dt);
   updateParticles(dt);
   updateScorePops(dt);
   updateSparkles(dt);
@@ -543,6 +589,14 @@ function updateClouds(dt) {
 function updatePlayer(dt) {
   const p = state.player;
   p.vy += 780 * dt;
+  for (const zone of state.windZones) {
+    const px = p.x + p.w * 0.5;
+    const py = p.y + p.h * 0.5;
+    if (px > zone.x && px < zone.x + zone.w && py > zone.y && py < zone.y + zone.h) {
+      p.vy += zone.force * dt;
+      p.angle += (zone.upward ? -0.08 : 0.08) * dt * 8;
+    }
+  }
   p.y += p.vy * dt;
   p.angle = Math.max(-0.22, Math.min(0.28, p.vy / 850));
 
@@ -560,6 +614,8 @@ function updatePlayer(dt) {
 function updateSpawns(dt) {
   state.spawnEnemy -= dt;
   state.spawnItem -= dt;
+  state.windSpawn -= dt;
+  state.luckyCloudSpawn -= dt;
   if (state.sparkleTimer <= 0) {
     state.sparkleCooldown -= dt;
   }
@@ -577,6 +633,16 @@ function updateSpawns(dt) {
     state.spawnItem = state.sparkleTimer > 0 ? 0.46 + Math.random() * 0.28 : 1.08 + Math.random() * 0.85;
   }
 
+  if (state.distance > 35 && state.windSpawn <= 0) {
+    spawnWindZone();
+    state.windSpawn = 10 + Math.random() * 8;
+  }
+
+  if (state.distance > 25 && state.luckyCloudSpawn <= 0) {
+    spawnLuckyCloud();
+    state.luckyCloudSpawn = 13 + Math.random() * 9;
+  }
+
   if (state.sparkleCooldown <= 0) {
     startSparkleTime();
   }
@@ -585,6 +651,14 @@ function updateSpawns(dt) {
     spawnDashCatWarning();
     state.dashCatCooldown = 8.5 + Math.random() * 3;
   }
+}
+
+function updateWindZones(dt) {
+  for (const zone of state.windZones) {
+    zone.x -= (state.speed * 0.82) * dt;
+    zone.life = Math.min(1, Math.max(0, (zone.x + zone.w + 80) / (W + zone.w + 120)));
+  }
+  state.windZones = state.windZones.filter((zone) => zone.x > -zone.w - 30);
 }
 
 function startSparkleTime() {
@@ -713,15 +787,63 @@ function updateDashCat(dt) {
 
 function updateItems(dt) {
   const pBox = playerHitbox();
+  const magnetX = state.player.x + state.player.w * 0.5;
+  const magnetY = state.player.y + state.player.h * 0.5;
   for (const item of state.items) {
     item.x -= (state.speed + 16) * dt;
     item.y += Math.sin(state.time * 4 + item.bob) * 18 * dt;
+    if (state.magnetTimer > 0) {
+      const dx = magnetX - (item.x + item.w * 0.5);
+      const dy = magnetY - (item.y + item.h * 0.5);
+      const dist = Math.hypot(dx, dy);
+      if (dist < MAGNET_RADIUS && dist > 1) {
+        const pull = (1 - dist / MAGNET_RADIUS) * 560;
+        item.x += (dx / dist) * pull * dt;
+        item.y += (dy / dist) * pull * dt;
+      }
+    }
     if (intersects(pBox, item)) {
       collectItem(item.kind, item.x + item.w / 2, item.y + item.h / 2);
       item.dead = true;
     }
   }
   state.items = state.items.filter((item) => !item.dead && item.x > -80);
+}
+
+function updateLuckyClouds(dt) {
+  const pBox = playerHitbox();
+  for (const cloud of state.luckyClouds) {
+    cloud.x -= (state.speed * 0.72 + 18) * dt;
+    cloud.y += Math.sin(state.time * 3.2 + cloud.bob) * 12 * dt;
+    if (intersects(pBox, cloud)) {
+      collectLuckyCloud(cloud.x + cloud.w * 0.5, cloud.y + cloud.h * 0.5);
+      cloud.dead = true;
+    }
+  }
+  state.luckyClouds = state.luckyClouds.filter((cloud) => !cloud.dead && cloud.x > -100);
+}
+
+function collectLuckyCloud(x, y) {
+  state.magnetTimer = Math.max(state.magnetTimer, 6);
+  state.goldenBoostTimer = Math.max(state.goldenBoostTimer, 8);
+  state.spawnItem = Math.min(state.spawnItem, 0.18);
+  addTextPop(x, y - 16, "ラッキー雲!", "#56bfff");
+  addTextPop(x, y + 16, "吸い寄せ + 金桃UP", "#f4a62a");
+  addParticles(x, y, "#ffffff", 18);
+  addParticles(x, y, "#ffd85a", 12);
+  playPowerSound();
+}
+
+function addComboScore(basePoints, x, y, color) {
+  state.combo = Math.min(99, state.combo + 1);
+  state.comboTimer = COMBO_WINDOW;
+  const multiplier = Math.min(MAX_COMBO_MULTIPLIER, Math.max(1, state.combo));
+  const total = basePoints * multiplier;
+  state.comboBonus += total - basePoints;
+  addScorePop(x, y, total, color);
+  if (multiplier > 1) {
+    addTextPop(x, y - 24, `COMBO x${multiplier}`, "#ff9f43");
+  }
 }
 
 function collectItem(kind, x, y) {
@@ -759,20 +881,20 @@ function collectItem(kind, x, y) {
     playVoiceClip("itemBomb");
   } else if (kind === "peach") {
     state.peachCount += 1;
-    addScorePop(x, y, 100, "#ff668a");
+    addComboScore(100, x, y, "#ff668a");
     addParticles(x, y, "#ffb1b8", 12);
     playItemSound();
     playVoiceClip("itemPeach");
   } else if (kind === "goldenPeach") {
     state.goldenPeachCount += 1;
-    addScorePop(x, y, 1000, "#f4a62a");
-    addTextPop(x, y - 24, "激レア!", "#ffcf33");
+    addComboScore(1000, x, y, "#f4a62a");
+    addTextPop(x, y - 46, "激レア!", "#ffcf33");
     addParticles(x, y, "#ffd85a", 24);
     playPowerSound();
     playVoiceClip("itemRare");
   } else if (kind === "microphone") {
     state.microphoneCount += 1;
-    addScorePop(x, y, 250, "#7b68ff");
+    addComboScore(250, x, y, "#7b68ff");
     addParticles(x, y, "#d9d7ee", 14);
     addParticles(x, y, "#ffd05c", 8);
     playItemSound();
@@ -979,54 +1101,34 @@ function initVoiceClips() {
   if (audioState.clipsReady) return;
   audioState.clipsReady = true;
   Object.entries(voiceClipList).forEach(([key, src]) => {
-    const clip = document.createElement("video");
-    clip.src = src;
-    clip.preload = "auto";
-    clip.playsInline = true;
-    clip.setAttribute("playsinline", "");
-    clip.setAttribute("webkit-playsinline", "");
-    clip.volume = 0.92;
-    clip.style.position = "fixed";
-    clip.style.left = "-9999px";
-    clip.style.top = "0";
-    clip.style.width = "1px";
-    clip.style.height = "1px";
-    clip.style.opacity = "0";
-    document.body.appendChild(clip);
-    clip.load();
-    audioState.clips[key] = clip;
+    const players = Array.from({ length: 2 }, () => {
+      const clip = new Audio(src);
+      clip.preload = "auto";
+      clip.volume = 0.92;
+      clip.load();
+      return clip;
+    });
+    audioState.clips[key] = { players, index: 0 };
   });
 }
 
 function unlockVoiceClips() {
   if (audioState.clipsUnlocked) return;
   audioState.clipsUnlocked = true;
-  Object.values(audioState.clips).forEach((clip) => clip.load());
+  Object.values(audioState.clips).forEach((entry) => entry.players.forEach((clip) => clip.load()));
 }
 
 function playVoiceClip(key) {
   if (!audioState.enabled) return;
   initVoiceClips();
-  const clip = audioState.clips[key];
-  if (!clip) return;
-  const player = clip.cloneNode(true);
-  player.volume = clip.volume;
-  player.playsInline = true;
-  player.setAttribute("playsinline", "");
-  player.setAttribute("webkit-playsinline", "");
-  player.style.position = "fixed";
-  player.style.left = "-9999px";
-  player.style.top = "0";
-  player.style.width = "1px";
-  player.style.height = "1px";
-  player.style.opacity = "0";
+  const entry = audioState.clips[key];
+  if (!entry) return;
+  const player = entry.players[entry.index];
+  entry.index = (entry.index + 1) % entry.players.length;
+  player.pause();
   player.currentTime = 0;
-  document.body.appendChild(player);
-  const cleanup = () => player.remove();
-  player.addEventListener("ended", cleanup, { once: true });
-  player.addEventListener("error", cleanup, { once: true });
   const promise = player.play();
-  if (promise?.catch) promise.catch(cleanup);
+  if (promise?.catch) promise.catch(() => {});
 }
 
 function playTone(freq, start, duration, type = "sine", volume = 0.05, endFreq = null) {
@@ -1182,7 +1284,8 @@ function score() {
     + state.peachCount * 100
     + state.goldenPeachCount * 1000
     + state.microphoneCount * 250
-    + state.enemyScore;
+    + state.enemyScore
+    + state.comboBonus;
 }
 
 function gameOverComment(value) {
@@ -1490,7 +1593,9 @@ function draw() {
     return;
   }
   drawBackground();
+  drawWindZones();
   drawSparkles();
+  drawLuckyClouds();
   drawItems();
   drawEnemies();
   drawDashCat();
@@ -1847,9 +1952,14 @@ function drawDuelStageBackdrop(stage) {
     const img = assets.duelBackgrounds;
     const sw = img.width / 2;
     const sh = img.height / 2;
-    const sx = (theme % 2) * sw;
-    const sy = Math.floor(theme / 2) * sh;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    const col = theme % 2;
+    const row = Math.floor(theme / 2);
+    const gutter = 5;
+    const sx = col * sw + (col > 0 ? gutter : 0);
+    const sy = row * sh + (row > 0 ? gutter : 0);
+    const cropW = sw - (col > 0 ? gutter : 0) - (col < 1 ? gutter : 0);
+    const cropH = sh - (row > 0 ? gutter : 0) - (row < 1 ? gutter : 0);
+    ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, W, H);
     const vignette = ctx.createLinearGradient(0, 0, 0, H);
     vignette.addColorStop(0, "rgba(255,255,255,0.03)");
     vignette.addColorStop(0.48, "rgba(255,255,255,0)");
@@ -1965,14 +2075,27 @@ function drawHudDuel() {
 
 function drawDuelTitle() {
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.84)";
-  roundRect(42, 120, W - 84, 462, 8);
+  ctx.shadowColor = "rgba(24, 17, 27, 0.18)";
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 6;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+  roundRect(50, 120, W - 100, 442, 8);
   ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.lineWidth = 2;
+  roundRect(50, 120, W - 100, 442, 8);
+  ctx.stroke();
+
+  ctx.shadowColor = "rgba(24, 17, 27, 0.5)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
   ctx.fillStyle = "#31475d";
   ctx.textAlign = "center";
   ctx.font = "900 28px system-ui, sans-serif";
   ctx.fillText("しり殺", W / 2, 172);
   drawTitleShiri(192, 0.68);
+  ctx.shadowColor = "transparent";
   ctx.font = "800 15px system-ui, sans-serif";
   ctx.fillText("名前を入れて決闘開始", W / 2, 318);
   drawDuelRanking(W / 2, 358);
@@ -2099,7 +2222,8 @@ function drawPlayerSprite(x, y, w, h) {
 
 function drawEnemies() {
   for (const enemy of state.enemies) {
-    drawImageCover(assets[enemy.type], enemy.x, enemy.y, enemy.w, enemy.h);
+    const img = enemy.type === "octopus" ? assets.duelRedOctopus : assets[enemy.type];
+    drawImageCover(img, enemy.x, enemy.y, enemy.w, enemy.h);
   }
 }
 
@@ -2135,6 +2259,85 @@ function drawItems() {
     const h = item.h * pulse;
     drawImageCover(assets[item.kind], item.x - (w - item.w) / 2, item.y - (h - item.h) / 2, w, h);
   }
+}
+
+function drawWindZones() {
+  for (const zone of state.windZones) {
+    ctx.save();
+    ctx.globalAlpha = 0.24 + 0.16 * Math.sin(state.time * 4 + zone.phase);
+    const grad = ctx.createLinearGradient(zone.x, zone.y, zone.x + zone.w, zone.y);
+    grad.addColorStop(0, "rgba(255,255,255,0)");
+    grad.addColorStop(0.45, zone.upward ? "rgba(83,190,255,0.72)" : "rgba(155,124,255,0.66)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    roundRect(zone.x, zone.y, zone.w, zone.h, 24);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = zone.upward ? "#d8f5ff" : "#eee4ff";
+    ctx.lineWidth = 3;
+    for (let y = zone.y + 24; y < zone.y + zone.h; y += 58) {
+      const cx = zone.x + zone.w * 0.5 + Math.sin(state.time * 3 + y) * 12;
+      drawWindArrow(cx, y, zone.upward);
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWindArrow(x, y, upward) {
+  const dir = upward ? 1 : -1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + dir * 16);
+  ctx.lineTo(x, y - dir * 16);
+  ctx.moveTo(x, y - dir * 16);
+  ctx.lineTo(x - 8, y - dir * 6);
+  ctx.moveTo(x, y - dir * 16);
+  ctx.lineTo(x + 8, y - dir * 6);
+  ctx.stroke();
+}
+
+function drawLuckyClouds() {
+  for (const cloud of state.luckyClouds) {
+    ctx.save();
+    const pulse = 1 + Math.sin(state.time * 5 + cloud.bob) * 0.05;
+    const x = cloud.x + cloud.w * (1 - pulse) * 0.5;
+    const y = cloud.y + cloud.h * (1 - pulse) * 0.5;
+    const w = cloud.w * pulse;
+    const h = cloud.h * pulse;
+    ctx.shadowColor = "rgba(255, 215, 92, 0.45)";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    drawCloudShape(x, y, w, h);
+    ctx.fill();
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = "#ffd85a";
+    drawSparkleMark(x + w * 0.72, y + h * 0.28, 8);
+    drawSparkleMark(x + w * 0.32, y + h * 0.36, 5);
+    ctx.restore();
+  }
+}
+
+function drawCloudShape(x, y, w, h) {
+  ctx.beginPath();
+  ctx.arc(x + w * 0.28, y + h * 0.58, h * 0.28, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.48, y + h * 0.42, h * 0.36, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.68, y + h * 0.58, h * 0.26, 0, Math.PI * 2);
+  ctx.rect(x + w * 0.22, y + h * 0.52, w * 0.54, h * 0.26);
+}
+
+function drawSparkleMark(x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s * 0.28, y - s * 0.28);
+  ctx.lineTo(x + s, y);
+  ctx.lineTo(x + s * 0.28, y + s * 0.28);
+  ctx.lineTo(x, y + s);
+  ctx.lineTo(x - s * 0.28, y + s * 0.28);
+  ctx.lineTo(x - s, y);
+  ctx.lineTo(x - s * 0.28, y - s * 0.28);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawImageCover(img, x, y, w, h) {
@@ -2206,6 +2409,24 @@ function drawHud() {
     ctx.fillStyle = "#7b4b11";
     ctx.font = "700 13px system-ui, sans-serif";
     ctx.fillText(`キラキラ ${state.sparkleTimer.toFixed(1)}s`, 28, y + 19);
+  }
+  if (state.magnetTimer > 0 || state.goldenBoostTimer > 0) {
+    const y = 76 + (state.invincible > 0 ? 34 : 0) + (state.sparkleTimer > 0 ? 34 : 0);
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    roundRect(14, y, 152, 28, 8);
+    ctx.fill();
+    ctx.fillStyle = "#356b8f";
+    ctx.font = "700 12px system-ui, sans-serif";
+    ctx.fillText(`LUCKY ${Math.max(state.magnetTimer, state.goldenBoostTimer).toFixed(1)}s`, 28, y + 19);
+  }
+  if (state.combo > 1 && state.comboTimer > 0) {
+    ctx.fillStyle = "rgba(255, 246, 194, 0.92)";
+    roundRect(W - 126, 58, 104, 30, 8);
+    ctx.fill();
+    ctx.fillStyle = "#b45b17";
+    ctx.font = "900 14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`COMBO x${Math.min(MAX_COMBO_MULTIPLIER, state.combo)}`, W - 74, 78);
   }
   ctx.restore();
 }
@@ -2522,7 +2743,8 @@ function drawDuelHelpPanel() {
 }
 
 function drawHelpItem(kind, name, description, x, y) {
-  drawImageCover(assets[kind], x, y - 30, 34, 34);
+  const img = kind === "octopus" ? assets.duelRedOctopus : assets[kind];
+  drawImageCover(img, x, y - 30, 34, 34);
   ctx.fillStyle = "#31475d";
   ctx.font = "900 14px system-ui, sans-serif";
   ctx.fillText(name, x + 48, y - 14);
