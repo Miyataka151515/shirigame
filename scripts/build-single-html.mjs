@@ -33,26 +33,26 @@ const assets = [
 ];
 
 const audioAssets = [
-  "voice-damage-ite.mp4",
-  "voice-damage-moo.mp4",
-  "voice-damage-uwa.mp4",
-  "voice-death-scream.mp4",
-  "voice-duel-kill.mp4",
-  "voice-duel-stage3-laugh.mp4",
-  "voice-invincible-kill.mp4",
-  "voice-item-beer.mp4",
-  "voice-item-bomb.mp4",
-  "voice-item-mic.mp4",
-  "voice-item-peach.mp4",
-  "voice-item-pudding.mp4",
-  "voice-item-rare.mp4",
-  "voice-item-yakitori.mp4",
-  "voice-score-bad.mp4",
-  "voice-score-good.mp4",
-  "voice-score-great.mp4",
-  "voice-score-marriage.mp4",
-  "voice-score-okay.mp4",
-  "voice-score-worse.mp4",
+  "voice-damage-ite.m4a",
+  "voice-damage-moo.m4a",
+  "voice-damage-uwa.m4a",
+  "voice-death-scream.m4a",
+  "voice-duel-kill.m4a",
+  "voice-duel-stage3-laugh.m4a",
+  "voice-invincible-kill.m4a",
+  "voice-item-beer.m4a",
+  "voice-item-bomb.m4a",
+  "voice-item-mic.m4a",
+  "voice-item-peach.m4a",
+  "voice-item-pudding.m4a",
+  "voice-item-rare.m4a",
+  "voice-item-yakitori.m4a",
+  "voice-score-bad.m4a",
+  "voice-score-good.m4a",
+  "voice-score-great.m4a",
+  "voice-score-marriage.m4a",
+  "voice-score-okay.m4a",
+  "voice-score-worse.m4a",
 ];
 
 for (const name of assets) {
@@ -63,7 +63,8 @@ for (const name of assets) {
 
 for (const name of audioAssets) {
   const bytes = readFileSync(join(root, "assets", "audio", name));
-  const dataUrl = `data:video/mp4;base64,${bytes.toString("base64")}`;
+  const mime = name.endsWith(".m4a") ? "audio/mp4" : "video/mp4";
+  const dataUrl = `data:${mime};base64,${bytes.toString("base64")}`;
   js = js.replaceAll(`assets/audio/${name}`, dataUrl);
 }
 
